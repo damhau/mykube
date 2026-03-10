@@ -16,3 +16,5 @@ cli/mykube
 .idea/
 .vscode/
 *.swp
+
+CLAUDE.md
