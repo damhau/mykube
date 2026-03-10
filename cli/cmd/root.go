@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var relayURL string
+var relayURL = "https://mykube.onrender.com"
 
 var rootCmd = &cobra.Command{
 	Use:   "mykube",
@@ -15,8 +15,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&relayURL, "relay-url", "", "URL of the relay server (required)")
-	rootCmd.MarkPersistentFlagRequired("relay-url")
+	rootCmd.PersistentFlags().StringVar(&relayURL, "relay-url", relayURL, "URL of the relay server")
 }
 
 func Execute() {
