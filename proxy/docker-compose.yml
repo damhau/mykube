@@ -1,0 +1,13 @@
+services:
+  squid:
+    build: .
+    ports:
+      - "3128:3128"
+      - "3129:3129"
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./certs:/etc/squid/certs-out
+    command: >
+      bash -c "cp /etc/squid/certs/server.crt /etc/squid/certs-out/ &&
+               chmod 777 /dev/stdout /dev/stderr &&
+               /usr/sbin/squid -N -f /etc/squid/squid.conf"

@@ -46,7 +46,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Loaded kubeconfig for cluster %q (server: %s)\n", clusterName, serverURL)
 
 	// 2. Create session via relay
-	rc := &relay.RelayClient{BaseURL: relayURL}
+	httpClient, err := httpClientFromFlags()
+	if err != nil {
+		return err
+	}
+	rc := &relay.RelayClient{BaseURL: relayURL, HTTPClient: httpClient}
 	sessionID, code, err := rc.CreateSession()
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)

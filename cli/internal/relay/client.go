@@ -12,7 +12,15 @@ import (
 )
 
 type RelayClient struct {
-	BaseURL string
+	BaseURL    string
+	HTTPClient *http.Client
+}
+
+func (c *RelayClient) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return http.DefaultClient
 }
 
 type createSessionResponse struct {
@@ -25,7 +33,7 @@ type pairResponse struct {
 }
 
 func (c *RelayClient) CreateSession() (sessionID, code string, err error) {
-	resp, err := http.Post(c.BaseURL+"/api/sessions", "application/json", bytes.NewReader([]byte("{}")))
+	resp, err := c.httpClient().Post(c.BaseURL+"/api/sessions", "application/json", bytes.NewReader([]byte("{}")))
 	if err != nil {
 		return "", "", fmt.Errorf("create session: %w", err)
 	}
@@ -44,7 +52,7 @@ func (c *RelayClient) CreateSession() (sessionID, code string, err error) {
 
 func (c *RelayClient) PairSession(code string) (sessionID string, err error) {
 	body, _ := json.Marshal(map[string]string{"code": code})
-	resp, err := http.Post(c.BaseURL+"/api/pair", "application/json", bytes.NewReader(body))
+	resp, err := c.httpClient().Post(c.BaseURL+"/api/pair", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("pair session: %w", err)
 	}
@@ -61,9 +69,13 @@ func (c *RelayClient) PairSession(code string) (sessionID string, err error) {
 	return result.SessionID, nil
 }
 
+func (c *RelayClient) dialOpts() *websocket.DialOptions {
+	return &websocket.DialOptions{HTTPClient: c.httpClient()}
+}
+
 func (c *RelayClient) ConnectAgent(ctx context.Context, sessionID string) (*websocket.Conn, error) {
 	wsURL := strings.Replace(c.BaseURL, "http", "ws", 1) + "/ws/agent/" + sessionID
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, _, err := websocket.Dial(ctx, wsURL, c.dialOpts())
 	if err != nil {
 		return nil, fmt.Errorf("connect agent ws: %w", err)
 	}
@@ -72,7 +84,7 @@ func (c *RelayClient) ConnectAgent(ctx context.Context, sessionID string) (*webs
 
 func (c *RelayClient) ConnectClient(ctx context.Context, sessionID string) (*websocket.Conn, error) {
 	wsURL := strings.Replace(c.BaseURL, "http", "ws", 1) + "/ws/client/" + sessionID
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, _, err := websocket.Dial(ctx, wsURL, c.dialOpts())
 	if err != nil {
 		return nil, fmt.Errorf("connect client ws: %w", err)
 	}

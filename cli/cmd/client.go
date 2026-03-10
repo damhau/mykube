@@ -41,7 +41,11 @@ func runClient(cmd *cobra.Command, args []string) error {
 	code = strings.TrimSpace(code)
 
 	// 2. Pair via relay
-	rc := &relay.RelayClient{BaseURL: relayURL}
+	httpClient, err := httpClientFromFlags()
+	if err != nil {
+		return err
+	}
+	rc := &relay.RelayClient{BaseURL: relayURL, HTTPClient: httpClient}
 	sessionID, err := rc.PairSession(code)
 	if err != nil {
 		return fmt.Errorf("pair session: %w", err)
