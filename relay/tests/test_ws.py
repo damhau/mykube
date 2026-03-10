@@ -51,15 +51,26 @@ def test_ws_bridge():
                 signal = agent_ws.receive_text()
                 assert signal == "paired"
 
-                # Send from client to agent
-                client_ws.send_text("hello from client")
+                # Client sends a "new:1" control signal to open a connection
+                client_ws.send_text("new:1")
                 msg = agent_ws.receive_text()
-                assert msg == "hello from client"
+                assert msg == "new:1"
 
-                # Send from agent to client
-                agent_ws.send_text("hello from agent")
+                # Client sends binary-framed data: [4-byte connID=1][payload]
+                conn_id = (1).to_bytes(4, "big")
+                client_ws.send_bytes(conn_id + b"hello from client")
+                raw = agent_ws.receive_bytes()
+                assert raw == conn_id + b"hello from client"
+
+                # Agent sends binary-framed data back
+                agent_ws.send_bytes(conn_id + b"hello from agent")
+                raw = client_ws.receive_bytes()
+                assert raw == conn_id + b"hello from agent"
+
+                # Agent signals done for connection 1
+                agent_ws.send_text("done:1")
                 msg = client_ws.receive_text()
-                assert msg == "hello from agent"
+                assert msg == "done:1"
 
 
 def test_ws_session_not_found():

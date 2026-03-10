@@ -3,6 +3,7 @@ package kubeconfig
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 )
 
@@ -10,26 +11,27 @@ const kubeconfigTemplate = `apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    certificate-authority-data: {{ .CAData }}
-    server: https://{{ .ServerAddr }}
-  name: {{ .ClusterName }}
+    certificate-authority-data: "{{ .CAData }}"
+    server: "https://{{ .ServerAddr }}"
+    insecure-skip-tls-verify: true
+  name: "{{ .ClusterName }}"
 contexts:
 - context:
-    cluster: {{ .ClusterName }}
+    cluster: "{{ .ClusterName }}"
     user: mykube-user
-  name: {{ .ClusterName }}
-current-context: {{ .ClusterName }}
+  name: "{{ .ClusterName }}"
+current-context: "{{ .ClusterName }}"
 users:
 - name: mykube-user
   user:
 {{- if .Token }}
-    token: {{ .Token }}
+    token: "{{ .Token }}"
 {{- end }}
 {{- if .ClientCert }}
-    client-certificate-data: {{ .ClientCert }}
+    client-certificate-data: "{{ .ClientCert }}"
 {{- end }}
 {{- if .ClientKey }}
-    client-key-data: {{ .ClientKey }}
+    client-key-data: "{{ .ClientKey }}"
 {{- end }}
 `
 
@@ -44,7 +46,8 @@ type kubeconfigData struct {
 
 // WriteTempKubeconfig writes a temporary kubeconfig file pointing to the local proxy.
 func WriteTempKubeconfig(clusterName, serverAddr, caData, token, clientCert, clientKey string) (string, error) {
-	path := fmt.Sprintf("/tmp/mykube-%s.yaml", clusterName)
+	safeName := strings.ReplaceAll(clusterName, ":", "-")
+	path := fmt.Sprintf("/tmp/mykube-%s.yaml", safeName)
 
 	f, err := os.Create(path)
 	if err != nil {
