@@ -102,10 +102,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// 8. Serve connections (encrypted)
-	fmt.Fprintf(os.Stderr, "Ready, waiting for kubectl requests...\n")
+	fmt.Fprintf(os.Stderr, "\033[32m●\033[0m Client connected — tunneling to %s\n", serverHost)
 	tunnel.ServeAgent(ctx, encConn, serverHost)
 
-	fmt.Fprintf(os.Stderr, "Session ended.\n")
+	fmt.Fprintf(os.Stderr, "\033[31m●\033[0m Client disconnected.\n")
 	return nil
 }
 

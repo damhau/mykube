@@ -146,7 +146,6 @@ func ServeClient(ctx context.Context, wsConn e2e.WSConn, listener net.Listener) 
 				return
 			}
 
-			fmt.Fprintf(os.Stderr, "[client] New connection %d\n", id)
 			go tcpToWS(ctx, wsConn, &wsMu, id, tcpConn, reg)
 		}
 	}()
@@ -210,7 +209,6 @@ func ServeAgent(ctx context.Context, wsConn e2e.WSConn, apiServerHost string) {
 			}
 			switch cmd {
 			case "new":
-				fmt.Fprintf(os.Stderr, "[agent] New connection %d, dialing %s...\n", id, apiServerHost)
 				tcpConn, err := net.Dial("tcp", apiServerHost)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "[agent] dial error (conn %d): %v\n", id, err)

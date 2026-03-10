@@ -22,10 +22,8 @@ class SessionStore:
         self._code_index: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
-    _CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-
     def _generate_code(self) -> str:
-        return "".join(secrets.choice(self._CODE_CHARS) for _ in range(8))
+        return "".join(secrets.choice("0123456789") for _ in range(8))
 
     async def create_session(self) -> Session:
         async with self._lock:
