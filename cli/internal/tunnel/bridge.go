@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/damien/mykube/cli/internal/e2e"
 	"nhooyr.io/websocket"
 )
 
@@ -57,14 +58,14 @@ func (r *connRegistry) closeAll() {
 }
 
 // sendDone sends a "done:<connID>" text message over the WebSocket.
-func sendDone(ctx context.Context, wsConn *websocket.Conn, wsMu *sync.Mutex, id uint32) {
+func sendDone(ctx context.Context, wsConn e2e.WSConn, wsMu *sync.Mutex, id uint32) {
 	wsMu.Lock()
 	wsConn.Write(ctx, websocket.MessageText, []byte(fmt.Sprintf("done:%d", id)))
 	wsMu.Unlock()
 }
 
 // writeFrame sends a binary WebSocket message with a 4-byte connID header.
-func writeFrame(ctx context.Context, wsConn *websocket.Conn, wsMu *sync.Mutex, id uint32, payload []byte) error {
+func writeFrame(ctx context.Context, wsConn e2e.WSConn, wsMu *sync.Mutex, id uint32, payload []byte) error {
 	frame := make([]byte, 4+len(payload))
 	binary.BigEndian.PutUint32(frame[:4], id)
 	copy(frame[4:], payload)
@@ -76,7 +77,7 @@ func writeFrame(ctx context.Context, wsConn *websocket.Conn, wsMu *sync.Mutex, i
 
 // tcpToWS reads from a TCP connection and writes framed binary messages to the WebSocket.
 // On EOF or error it sends done:<connID> and removes the connection from the registry.
-func tcpToWS(ctx context.Context, wsConn *websocket.Conn, wsMu *sync.Mutex, id uint32, tcpConn net.Conn, reg *connRegistry) {
+func tcpToWS(ctx context.Context, wsConn e2e.WSConn, wsMu *sync.Mutex, id uint32, tcpConn net.Conn, reg *connRegistry) {
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := tcpConn.Read(buf)
@@ -115,7 +116,7 @@ func parseControl(data string) (string, uint32, bool) {
 
 // ServeClient accepts TCP connections on the listener and multiplexes them
 // through the WebSocket using binary framing with connection IDs.
-func ServeClient(ctx context.Context, wsConn *websocket.Conn, listener net.Listener) {
+func ServeClient(ctx context.Context, wsConn e2e.WSConn, listener net.Listener) {
 	var wsMu sync.Mutex
 	var nextID atomic.Uint32
 	reg := newRegistry()
@@ -188,7 +189,7 @@ func ServeClient(ctx context.Context, wsConn *websocket.Conn, listener net.Liste
 
 // ServeAgent reads control signals and framed data from the WebSocket,
 // dials the API server for each new connection, and bridges traffic.
-func ServeAgent(ctx context.Context, wsConn *websocket.Conn, apiServerHost string) {
+func ServeAgent(ctx context.Context, wsConn e2e.WSConn, apiServerHost string) {
 	var wsMu sync.Mutex
 	reg := newRegistry()
 	defer reg.closeAll()

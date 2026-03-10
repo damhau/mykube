@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import random
-import string
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -23,8 +22,10 @@ class SessionStore:
         self._code_index: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
+    _CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
     def _generate_code(self) -> str:
-        return "".join(random.choices(string.digits, k=6))
+        return "".join(secrets.choice(self._CODE_CHARS) for _ in range(8))
 
     async def create_session(self) -> Session:
         async with self._lock:

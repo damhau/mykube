@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/damien/mykube/cli/internal/e2e"
 	"github.com/damien/mykube/cli/internal/handshake"
 	"github.com/damien/mykube/cli/internal/kubeconfig"
 	"github.com/damien/mykube/cli/internal/relay"
@@ -59,8 +60,15 @@ func runClient(cmd *cobra.Command, args []string) error {
 	}
 	defer wsConn.Close(websocket.StatusNormalClosure, "client shutting down")
 
-	// 4. Read handshake from agent
-	hs, err := handshake.Receive(ctx, wsConn)
+	// 4. E2E key exchange (client is responder)
+	encConn, err := e2e.KeyExchange(ctx, wsConn, false)
+	if err != nil {
+		return fmt.Errorf("e2e key exchange: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "E2E encryption established.\n")
+
+	// 5. Read handshake from agent (encrypted)
+	hs, err := handshake.Receive(ctx, encConn)
 	if err != nil {
 		return fmt.Errorf("receive handshake: %w", err)
 	}
@@ -83,8 +91,8 @@ func runClient(cmd *cobra.Command, args []string) error {
 	defer os.Remove(kubeconfigPath)
 	fmt.Fprintf(os.Stderr, "Wrote temp kubeconfig: %s\n", kubeconfigPath)
 
-	// 7. Accept TCP connections and bridge through WebSocket (in background)
-	go tunnel.ServeClient(ctx, wsConn, listener)
+	// 8. Accept TCP connections and bridge through WebSocket (in background)
+	go tunnel.ServeClient(ctx, encConn, listener)
 
 	// 8. Spawn subshell with KUBECONFIG set
 	fmt.Fprintf(os.Stderr, "Spawning shell with KUBECONFIG=%s\n", kubeconfigPath)
@@ -102,9 +110,10 @@ func runClient(cmd *cobra.Command, args []string) error {
 	}
 	defer os.Remove(rcFile.Name())
 	home, _ := os.UserHomeDir()
+	safeName := kubeconfig.SanitizeClusterName(hs.ClusterName)
 	fmt.Fprintf(rcFile, "[ -f %s/.bashrc ] && source %s/.bashrc\n", home, home)
 	fmt.Fprintf(rcFile, "export KUBECONFIG='%s'\n", kubeconfigPath)
-	fmt.Fprintf(rcFile, "export PS1='[mykube:%s] \\u@\\h:\\w\\$ '\n", hs.ClusterName)
+	fmt.Fprintf(rcFile, "export PS1='[mykube:%s] \\u@\\h:\\w\\$ '\n", safeName)
 	rcFile.Close()
 
 	shellCmd := exec.Command(shell, "--rcfile", rcFile.Name())

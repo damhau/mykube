@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/damien/mykube/cli/internal/e2e"
 	"github.com/damien/mykube/cli/internal/handshake"
 	"github.com/damien/mykube/cli/internal/kubeconfig"
 	"github.com/damien/mykube/cli/internal/relay"
@@ -73,9 +74,16 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("waiting for client signal: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Client connected! Sending handshake...\n")
+	fmt.Fprintf(os.Stderr, "Client connected! Establishing E2E encryption...\n")
 
-	// 5. Send handshake
+	// 5. E2E key exchange (agent is initiator)
+	encConn, err := e2e.KeyExchange(ctx, wsConn, true)
+	if err != nil {
+		return fmt.Errorf("e2e key exchange: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "E2E encryption established. Sending handshake...\n")
+
+	// 6. Send handshake (encrypted)
 	hs := &handshake.Handshake{
 		ClusterName: clusterName,
 		CAData:      caData,
@@ -83,19 +91,19 @@ func runServer(cmd *cobra.Command, args []string) error {
 		ClientCert:  clientCert,
 		ClientKey:   clientKey,
 	}
-	if err := hs.Send(ctx, wsConn); err != nil {
+	if err := hs.Send(ctx, encConn); err != nil {
 		return fmt.Errorf("send handshake: %w", err)
 	}
 
-	// 6. Parse server URL for TCP dial
+	// 7. Parse server URL for TCP dial
 	serverHost, err := extractHost(serverURL)
 	if err != nil {
 		return fmt.Errorf("parse server url: %w", err)
 	}
 
-	// 7. Serve connections: wait for "new" signals, dial kube-apiserver for each
+	// 8. Serve connections (encrypted)
 	fmt.Fprintf(os.Stderr, "Ready, waiting for kubectl requests...\n")
-	tunnel.ServeAgent(ctx, wsConn, serverHost)
+	tunnel.ServeAgent(ctx, encConn, serverHost)
 
 	fmt.Fprintf(os.Stderr, "Session ended.\n")
 	return nil

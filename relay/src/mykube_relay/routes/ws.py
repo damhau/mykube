@@ -18,6 +18,9 @@ def create_ws_router(store: SessionStore) -> APIRouter:
     @r.websocket("/agent/{session_id}")
     async def agent_ws(websocket: WebSocket, session_id: str) -> None:
         session = await store.get_session(session_id)
+        if session.agent_ws is not None:
+            await websocket.close(code=4409, reason="agent already connected")
+            return
         await websocket.accept()
         session.agent_ws = websocket
 
@@ -51,6 +54,9 @@ def create_ws_router(store: SessionStore) -> APIRouter:
         session = await store.get_session(session_id)
         if session.status != SessionStatus.PAIRED:
             await websocket.close(code=4403, reason="session not paired")
+            return
+        if session.client_ws is not None:
+            await websocket.close(code=4409, reason="client already connected")
             return
 
         await websocket.accept()

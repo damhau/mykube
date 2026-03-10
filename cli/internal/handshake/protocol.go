@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/damien/mykube/cli/internal/e2e"
 	"nhooyr.io/websocket"
 )
 
@@ -16,7 +17,7 @@ type Handshake struct {
 	ClientKey   string `json:"client_key,omitempty"`
 }
 
-func (h *Handshake) Send(ctx context.Context, conn *websocket.Conn) error {
+func (h *Handshake) Send(ctx context.Context, conn e2e.WSConn) error {
 	data, err := json.Marshal(h)
 	if err != nil {
 		return fmt.Errorf("marshal handshake: %w", err)
@@ -27,7 +28,7 @@ func (h *Handshake) Send(ctx context.Context, conn *websocket.Conn) error {
 	return nil
 }
 
-func Receive(ctx context.Context, conn *websocket.Conn) (*Handshake, error) {
+func Receive(ctx context.Context, conn e2e.WSConn) (*Handshake, error) {
 	typ, data, err := conn.Read(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read handshake: %w", err)
