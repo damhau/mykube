@@ -11,7 +11,7 @@ kind: Config
 clusters:
 - cluster:
     certificate-authority-data: {{ .CAData }}
-    server: https://127.0.0.1:16443
+    server: https://{{ .ServerAddr }}
   name: {{ .ClusterName }}
 contexts:
 - context:
@@ -35,6 +35,7 @@ users:
 
 type kubeconfigData struct {
 	ClusterName string
+	ServerAddr  string
 	CAData      string
 	Token       string
 	ClientCert  string
@@ -42,7 +43,7 @@ type kubeconfigData struct {
 }
 
 // WriteTempKubeconfig writes a temporary kubeconfig file pointing to the local proxy.
-func WriteTempKubeconfig(clusterName, caData, token, clientCert, clientKey string) (string, error) {
+func WriteTempKubeconfig(clusterName, serverAddr, caData, token, clientCert, clientKey string) (string, error) {
 	path := fmt.Sprintf("/tmp/mykube-%s.yaml", clusterName)
 
 	f, err := os.Create(path)
@@ -58,6 +59,7 @@ func WriteTempKubeconfig(clusterName, caData, token, clientCert, clientKey strin
 
 	data := kubeconfigData{
 		ClusterName: clusterName,
+		ServerAddr:  serverAddr,
 		CAData:      caData,
 		Token:       token,
 		ClientCert:  clientCert,

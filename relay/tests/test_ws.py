@@ -47,6 +47,10 @@ def test_ws_bridge():
 
             # Client connects
             with tc.websocket_connect(f"/ws/client/{session_id}") as client_ws:
+                # Agent receives "paired" signal first
+                signal = agent_ws.receive_text()
+                assert signal == "paired"
+
                 # Send from client to agent
                 client_ws.send_text("hello from client")
                 msg = agent_ws.receive_text()

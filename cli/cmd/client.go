@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -35,9 +34,8 @@ func runClient(cmd *cobra.Command, args []string) error {
 
 	// 1. Prompt for pairing code
 	fmt.Fprint(os.Stderr, "Enter pairing code: ")
-	reader := bufio.NewReader(os.Stdin)
-	code, err := reader.ReadString('\n')
-	if err != nil {
+	var code string
+	if _, err := fmt.Scanln(&code); err != nil {
 		return fmt.Errorf("read pairing code: %w", err)
 	}
 	code = strings.TrimSpace(code)
@@ -64,32 +62,25 @@ func runClient(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "Connected to cluster: %s\n", hs.ClusterName)
 
-	// 5. Write temp kubeconfig
-	kubeconfigPath, err := kubeconfig.WriteTempKubeconfig(hs.ClusterName, hs.CAData, hs.Token, hs.ClientCert, hs.ClientKey)
+	// 5. Start TCP listener
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("listen on 127.0.0.1: %w", err)
+	}
+	defer listener.Close()
+	localAddr := listener.Addr().String()
+	fmt.Fprintf(os.Stderr, "Listening on %s\n", localAddr)
+
+	// 6. Write temp kubeconfig
+	kubeconfigPath, err := kubeconfig.WriteTempKubeconfig(hs.ClusterName, localAddr, hs.CAData, hs.Token, hs.ClientCert, hs.ClientKey)
 	if err != nil {
 		return fmt.Errorf("write temp kubeconfig: %w", err)
 	}
 	defer os.Remove(kubeconfigPath)
 	fmt.Fprintf(os.Stderr, "Wrote temp kubeconfig: %s\n", kubeconfigPath)
 
-	// 6. Start TCP listener
-	listener, err := net.Listen("tcp", "127.0.0.1:16443")
-	if err != nil {
-		return fmt.Errorf("listen on 127.0.0.1:16443: %w", err)
-	}
-	defer listener.Close()
-	fmt.Fprintf(os.Stderr, "Listening on 127.0.0.1:16443\n")
-
-	// 7. Accept TCP connections and bridge through WebSocket
-	go func() {
-		for {
-			tcpConn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			go tunnel.Bridge(ctx, wsConn, tcpConn)
-		}
-	}()
+	// 7. Accept TCP connections and bridge through WebSocket (in background)
+	go tunnel.ServeClient(ctx, wsConn, listener)
 
 	// 8. Spawn subshell with KUBECONFIG set
 	fmt.Fprintf(os.Stderr, "Spawning shell with KUBECONFIG=%s\n", kubeconfigPath)
@@ -99,7 +90,20 @@ func runClient(cmd *cobra.Command, args []string) error {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	shellCmd := exec.CommandContext(ctx, shell)
+
+	// Create temp rcfile that sources user's bashrc then overrides PS1
+	rcFile, err := os.CreateTemp("", "mykube-rc-*")
+	if err != nil {
+		return fmt.Errorf("create temp rcfile: %w", err)
+	}
+	defer os.Remove(rcFile.Name())
+	home, _ := os.UserHomeDir()
+	fmt.Fprintf(rcFile, "[ -f %s/.bashrc ] && source %s/.bashrc\n", home, home)
+	fmt.Fprintf(rcFile, "export KUBECONFIG='%s'\n", kubeconfigPath)
+	fmt.Fprintf(rcFile, "export PS1='[mykube:%s] \\u@\\h:\\w\\$ '\n", hs.ClusterName)
+	rcFile.Close()
+
+	shellCmd := exec.Command(shell, "--rcfile", rcFile.Name())
 	shellCmd.Stdin = os.Stdin
 	shellCmd.Stdout = os.Stdout
 	shellCmd.Stderr = os.Stderr

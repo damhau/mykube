@@ -3,13 +3,14 @@ package kubeconfig
 import (
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 // LoadCurrentContext loads the current kubeconfig context and extracts connection details.
 func LoadCurrentContext(kubeconfigPath string) (clusterName, serverURL, caData, token, clientCert, clientKey string, err error) {
-	loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath}
+	loadingRules := &clientcmd.ClientConfigLoadingRules{Precedence: filepath.SplitList(kubeconfigPath)}
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 

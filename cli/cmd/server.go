@@ -89,17 +89,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse server url: %w", err)
 	}
 
-	// 7. Dial kube-apiserver and bridge
-	fmt.Fprintf(os.Stderr, "Dialing kube-apiserver at %s...\n", serverHost)
-	tcpConn, err := net.Dial("tcp", serverHost)
-	if err != nil {
-		return fmt.Errorf("dial kube-apiserver: %w", err)
-	}
+	// 7. Serve connections: wait for "new" signals, dial kube-apiserver for each
+	fmt.Fprintf(os.Stderr, "Ready, waiting for kubectl requests...\n")
+	tunnel.ServeAgent(ctx, wsConn, serverHost)
 
-	fmt.Fprintf(os.Stderr, "Bridging traffic...\n")
-	tunnel.Bridge(ctx, wsConn, tcpConn)
-
-	fmt.Fprintf(os.Stderr, "Connection closed.\n")
+	fmt.Fprintf(os.Stderr, "Session ended.\n")
 	return nil
 }
 
