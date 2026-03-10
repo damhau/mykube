@@ -154,7 +154,7 @@ func ServeClient(ctx context.Context, wsConn e2e.WSConn, listener net.Listener) 
 	for {
 		typ, data, err := wsConn.Read(ctx)
 		if err != nil {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && websocket.CloseStatus(err) != websocket.StatusNormalClosure {
 				fmt.Fprintf(os.Stderr, "[client] ws read error: %v\n", err)
 			}
 			return
@@ -196,7 +196,7 @@ func ServeAgent(ctx context.Context, wsConn e2e.WSConn, apiServerHost string) {
 	for {
 		typ, data, err := wsConn.Read(ctx)
 		if err != nil {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && websocket.CloseStatus(err) != websocket.StatusNormalClosure {
 				fmt.Fprintf(os.Stderr, "[agent] ws read error: %v\n", err)
 			}
 			return

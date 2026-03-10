@@ -20,8 +20,9 @@ import (
 )
 
 var clientCmd = &cobra.Command{
-	Use:   "client",
+	Use:   "client [pairing-code]",
 	Short: "Connect to a cluster through the relay (operator laptop side)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runClient,
 }
 
@@ -33,13 +34,17 @@ func runClient(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// 1. Prompt for pairing code
-	fmt.Fprint(os.Stderr, "Enter pairing code: ")
+	// 1. Get pairing code from arg or prompt
 	var code string
-	if _, err := fmt.Scanln(&code); err != nil {
-		return fmt.Errorf("read pairing code: %w", err)
+	if len(args) > 0 {
+		code = strings.TrimSpace(args[0])
+	} else {
+		fmt.Fprint(os.Stderr, "Enter pairing code: ")
+		if _, err := fmt.Scanln(&code); err != nil {
+			return fmt.Errorf("read pairing code: %w", err)
+		}
+		code = strings.TrimSpace(code)
 	}
-	code = strings.TrimSpace(code)
 
 	// 2. Pair via relay
 	httpClient, err := httpClientFromFlags()

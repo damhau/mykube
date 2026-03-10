@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/damien/mykube/cli/internal/e2e"
 	"github.com/damien/mykube/cli/internal/handshake"
@@ -39,19 +40,53 @@ func runServer(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// 1. Load kubeconfig
+	// Load kubeconfig once
 	clusterName, serverURL, caData, token, clientCert, clientKey, err := kubeconfig.LoadCurrentContext(kubeconfigPath)
 	if err != nil {
 		return fmt.Errorf("load kubeconfig: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "Loaded kubeconfig for cluster %q (server: %s)\n", clusterName, serverURL)
 
-	// 2. Create session via relay
+	serverHost, err := extractHost(serverURL)
+	if err != nil {
+		return fmt.Errorf("parse server url: %w", err)
+	}
+
 	httpClient, err := httpClientFromFlags()
 	if err != nil {
 		return err
 	}
 	rc := &relay.RelayClient{BaseURL: relayURL, HTTPClient: httpClient}
+
+	hs := &handshake.Handshake{
+		ClusterName: clusterName,
+		CAData:      caData,
+		Token:       token,
+		ClientCert:  clientCert,
+		ClientKey:   clientKey,
+	}
+
+	for {
+		if err := serveOnce(ctx, rc, hs, serverHost); err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "Error: %v\nRetrying in 5s...\n", err)
+			select {
+			case <-ctx.Done():
+			case <-time.After(5 * time.Second):
+			}
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Server stopped.\n")
+	return nil
+}
+
+func serveOnce(ctx context.Context, rc *relay.RelayClient, hs *handshake.Handshake, serverHost string) error {
 	sessionID, code, err := rc.CreateSession()
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
@@ -62,50 +97,33 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "========================================\n\n")
 	fmt.Fprintf(os.Stderr, "Waiting for client to connect (session: %s)...\n", sessionID)
 
-	// 3. Connect WebSocket as agent
 	wsConn, err := rc.ConnectAgent(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("connect agent ws: %w", err)
 	}
-	defer wsConn.Close(websocket.StatusNormalClosure, "server shutting down")
+	defer wsConn.Close(websocket.StatusNormalClosure, "")
 
-	// 4. Wait for client signal (first message from relay)
+	// Wait for paired signal
 	_, _, err = wsConn.Read(ctx)
 	if err != nil {
-		return fmt.Errorf("waiting for client signal: %w", err)
+		return fmt.Errorf("waiting for client: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Client connected! Establishing E2E encryption...\n")
 
-	// 5. E2E key exchange (agent is initiator)
+	// E2E key exchange
 	encConn, err := e2e.KeyExchange(ctx, wsConn, true)
 	if err != nil {
 		return fmt.Errorf("e2e key exchange: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "E2E encryption established. Sending handshake...\n")
 
-	// 6. Send handshake (encrypted)
-	hs := &handshake.Handshake{
-		ClusterName: clusterName,
-		CAData:      caData,
-		Token:       token,
-		ClientCert:  clientCert,
-		ClientKey:   clientKey,
-	}
+	// Send handshake
 	if err := hs.Send(ctx, encConn); err != nil {
 		return fmt.Errorf("send handshake: %w", err)
 	}
 
-	// 7. Parse server URL for TCP dial
-	serverHost, err := extractHost(serverURL)
-	if err != nil {
-		return fmt.Errorf("parse server url: %w", err)
-	}
-
-	// 8. Serve connections (encrypted)
 	fmt.Fprintf(os.Stderr, "\033[32m●\033[0m Client connected — tunneling to %s\n", serverHost)
 	tunnel.ServeAgent(ctx, encConn, serverHost)
-
 	fmt.Fprintf(os.Stderr, "\033[31m●\033[0m Client disconnected.\n")
+
 	return nil
 }
 
