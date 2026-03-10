@@ -19,16 +19,16 @@ All traffic between client and server is **end-to-end encrypted** (X25519 + AES-
 ### Server side (on a machine with cluster access)
 
 ```bash
-mykube server --kubeconfig ~/.kube/config
+mykube server
 ```
 
-A pairing code is displayed (e.g. `A3K9FM72`).
+A pairing code is displayed (e.g. `71124175`).
 
 ### Client side (your laptop)
 
 ```bash
 mykube client
-# Enter pairing code: A3K9FM72
+# Enter pairing code: 71124175
 ```
 
 A subshell opens with `KUBECONFIG` set. Use `kubectl` as usual:
@@ -44,9 +44,9 @@ Type `exit` to disconnect.
 Download a binary from [Releases](https://github.com/damien/mykube/releases), or build from source:
 
 ```bash
-curl -o mykube https://github.com/damhau/mykube/releases/download/v0.3.0/mykube-linux-amd64
+curl -Lo mykube https://github.com/damhau/mykube/releases/latest/download/mykube-linux-amd64
 chmod +x mykube
-mv mykube /usr/local/bin
+sudo mv mykube /usr/local/bin
 ```
 
 ## How it works
@@ -68,7 +68,7 @@ Multiple concurrent TCP connections (e.g. `kubectl exec`, `port-forward`) are mu
 | `--proxy-ca` | — | Path to PEM CA cert for TLS-intercepting proxies |
 | `--kubeconfig` | `$KUBECONFIG` or `~/.kube/config` | Kubeconfig path (server only) |
 
-## Relay server
+## Relay server (hosting your own server)
 
 The relay is a lightweight FastAPI app that brokers WebSocket connections between agents and clients. It never sees decrypted traffic.
 
