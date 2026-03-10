@@ -68,7 +68,13 @@ Multiple concurrent TCP connections (e.g. `kubectl exec`, `port-forward`) are mu
 | `--proxy-ca` | — | Path to PEM CA cert for TLS-intercepting proxies |
 | `--kubeconfig` | `$KUBECONFIG` or `~/.kube/config` | Kubeconfig path (server only) |
 
-## Relay server (hosting your own server)
+## Relay server
+
+A free public relay is available at `mykube.onrender.com` and is used by default — no setup required. All traffic is end-to-end encrypted, so the relay never sees your credentials or kubectl data.
+
+To host your own relay, use `--relay-url` to point both server and client to it.
+
+### Self-hosting
 
 The relay is a lightweight FastAPI app that brokers WebSocket connections between agents and clients. It never sees decrypted traffic.
 

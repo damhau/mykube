@@ -13,9 +13,13 @@ import (
 var relayURL = "https://mykube.onrender.com"
 var proxyCA string
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "mykube",
-	Short: "Tunnel kubectl through a WebSocket relay",
+	Use:     "mykube",
+	Short:   "Tunnel kubectl through a WebSocket relay",
+	Version: Version,
 }
 
 func init() {

@@ -60,12 +60,28 @@ func SanitizeClusterName(name string) string {
 	return s
 }
 
-// WriteTempKubeconfig writes a temporary kubeconfig file (mode 0600) pointing
-// to the local proxy. Returns the file path.
+// ramTempDir returns a RAM-backed directory if available, otherwise "".
+func ramTempDir() string {
+	// Prefer XDG_RUNTIME_DIR (/run/user/<uid>) — tmpfs, mode 0700, per-user
+	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+	// Fall back to /dev/shm — tmpfs, always available on Linux
+	if info, err := os.Stat("/dev/shm"); err == nil && info.IsDir() {
+		return "/dev/shm"
+	}
+	// Fall back to OS default temp dir (may be on disk)
+	return ""
+}
+
+// WriteTempKubeconfig writes a temporary kubeconfig file (mode 0600) to a
+// RAM-backed filesystem when available. Returns the file path.
 func WriteTempKubeconfig(clusterName, serverAddr, caData, token, clientCert, clientKey string) (string, error) {
 	safeName := SanitizeClusterName(clusterName)
 
-	f, err := os.CreateTemp("", fmt.Sprintf("mykube-%s-*.yaml", safeName))
+	f, err := os.CreateTemp(ramTempDir(), fmt.Sprintf("mykube-%s-*.yaml", safeName))
 	if err != nil {
 		return "", fmt.Errorf("create temp kubeconfig: %w", err)
 	}
