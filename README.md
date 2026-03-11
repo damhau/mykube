@@ -2,6 +2,8 @@
 
 Access a remote Kubernetes cluster from anywhere through a WebSocket relay — no VPN, no public IP required.
 
+**[Documentation](https://damhau.github.io/mykube/)**
+
 The **server** (cluster side) tunnels the kube-apiserver through the relay.
 The **client** (laptop side) pairs with a code, gets a local kubeconfig, and uses `kubectl` normally.
 
