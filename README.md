@@ -68,6 +68,7 @@ Multiple concurrent TCP connections (e.g. `kubectl exec`, `port-forward`) are mu
 | `--relay-url` | `https://mykube.onrender.com` | Relay server URL |
 | `--proxy-ca` | — | Path to PEM CA cert for TLS-intercepting proxies |
 | `--kubeconfig` | `$KUBECONFIG` or `~/.kube/config` | Kubeconfig path (server only) |
+| `--no-shell` | `false` | Don't spawn a subshell; print KUBECONFIG and block until Ctrl+C (client only) |
 
 ## Relay server
 

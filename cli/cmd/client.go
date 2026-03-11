@@ -19,6 +19,8 @@ import (
 	"nhooyr.io/websocket"
 )
 
+var noShell bool
+
 var clientCmd = &cobra.Command{
 	Use:   "client [pairing-code]",
 	Short: "Connect to a cluster through the relay (operator laptop side)",
@@ -27,6 +29,7 @@ var clientCmd = &cobra.Command{
 }
 
 func init() {
+	clientCmd.Flags().BoolVar(&noShell, "no-shell", false, "don't spawn a subshell; just print KUBECONFIG and block until interrupted")
 	rootCmd.AddCommand(clientCmd)
 }
 
@@ -99,37 +102,45 @@ func runClient(cmd *cobra.Command, args []string) error {
 	// 8. Accept TCP connections and bridge through WebSocket (in background)
 	go tunnel.ServeClient(ctx, encConn, listener)
 
-	// 8. Spawn subshell with KUBECONFIG set
-	fmt.Fprintf(os.Stderr, "Spawning shell with KUBECONFIG=%s\n", kubeconfigPath)
-	fmt.Fprintf(os.Stderr, "Use kubectl as usual. Type 'exit' to disconnect.\n\n")
+	if noShell {
+		fmt.Fprintf(os.Stderr, "\n\033[32m●\033[0m Connected to cluster %s\n", hs.ClusterName)
+		fmt.Fprintf(os.Stderr, "  KUBECONFIG=%s\n", kubeconfigPath)
+		fmt.Fprintf(os.Stderr, "  Listening on %s\n", localAddr)
+		fmt.Fprintf(os.Stderr, "  Press Ctrl+C to disconnect.\n\n")
+		<-ctx.Done()
+	} else {
+		// Spawn subshell with KUBECONFIG set
+		fmt.Fprintf(os.Stderr, "Spawning shell with KUBECONFIG=%s\n", kubeconfigPath)
+		fmt.Fprintf(os.Stderr, "Use kubectl as usual. Type 'exit' to disconnect.\n\n")
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
 
-	// Create temp rcfile that sources user's bashrc then overrides PS1
-	rcFile, err := os.CreateTemp("", "mykube-rc-*")
-	if err != nil {
-		return fmt.Errorf("create temp rcfile: %w", err)
-	}
-	defer os.Remove(rcFile.Name())
-	home, _ := os.UserHomeDir()
-	safeName := kubeconfig.SanitizeClusterName(hs.ClusterName)
-	fmt.Fprintf(rcFile, "[ -f %s/.bashrc ] && source %s/.bashrc\n", home, home)
-	fmt.Fprintf(rcFile, "export KUBECONFIG='%s'\n", kubeconfigPath)
-	fmt.Fprintf(rcFile, "export PS1='[mykube:%s] \\u@\\h:\\w\\$ '\n", safeName)
-	rcFile.Close()
+		// Create temp rcfile that sources user's bashrc then overrides PS1
+		rcFile, err := os.CreateTemp("", "mykube-rc-*")
+		if err != nil {
+			return fmt.Errorf("create temp rcfile: %w", err)
+		}
+		defer os.Remove(rcFile.Name())
+		home, _ := os.UserHomeDir()
+		safeName := kubeconfig.SanitizeClusterName(hs.ClusterName)
+		fmt.Fprintf(rcFile, "[ -f %s/.bashrc ] && source %s/.bashrc\n", home, home)
+		fmt.Fprintf(rcFile, "export KUBECONFIG='%s'\n", kubeconfigPath)
+		fmt.Fprintf(rcFile, "export PS1='[mykube:%s] \\u@\\h:\\w\\$ '\n", safeName)
+		rcFile.Close()
 
-	shellCmd := exec.Command(shell, "--rcfile", rcFile.Name())
-	shellCmd.Stdin = os.Stdin
-	shellCmd.Stdout = os.Stdout
-	shellCmd.Stderr = os.Stderr
-	shellCmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfigPath)
+		shellCmd := exec.Command(shell, "--rcfile", rcFile.Name())
+		shellCmd.Stdin = os.Stdin
+		shellCmd.Stdout = os.Stdout
+		shellCmd.Stderr = os.Stderr
+		shellCmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfigPath)
 
-	if err := shellCmd.Run(); err != nil {
-		// Shell exited (possibly with non-zero), that's OK
-		fmt.Fprintf(os.Stderr, "\nShell exited.\n")
+		if err := shellCmd.Run(); err != nil {
+			// Shell exited (possibly with non-zero), that's OK
+			fmt.Fprintf(os.Stderr, "\nShell exited.\n")
+		}
 	}
 
 	// 9. Cleanup happens via deferred calls
