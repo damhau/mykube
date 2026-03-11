@@ -70,6 +70,16 @@ Multiple concurrent TCP connections (e.g. `kubectl exec`, `port-forward`) are mu
 | `--kubeconfig` | `$KUBECONFIG` or `~/.kube/config` | Kubeconfig path (server only) |
 | `--no-shell` | `false` | Don't spawn a subshell; print KUBECONFIG and block until Ctrl+C (client only) |
 
+## Proxy support
+
+mykube respects the standard `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` environment variables. All HTTP and WebSocket traffic to the relay will be routed through the proxy automatically.
+
+For TLS-intercepting proxies (e.g. corporate Squid/Zscaler), use `--proxy-ca` to trust the proxy's CA certificate:
+
+```bash
+mykube client --proxy-ca /path/to/proxy-ca.pem
+```
+
 ## Relay server
 
 A free public relay is available at `mykube.onrender.com` and is used by default — no setup required. All traffic is end-to-end encrypted, so the relay never sees your credentials or kubectl data.
