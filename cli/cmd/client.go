@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -43,10 +44,12 @@ func runClient(cmd *cobra.Command, args []string) error {
 		code = strings.TrimSpace(args[0])
 	} else {
 		fmt.Fprint(os.Stderr, "Enter pairing code: ")
-		if _, err := fmt.Scanln(&code); err != nil {
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
+		if err != nil {
 			return fmt.Errorf("read pairing code: %w", err)
 		}
-		code = strings.TrimSpace(code)
+		code = strings.TrimSpace(line)
 	}
 
 	// 2. Pair via relay
