@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # mykube
 
 **Access a remote Kubernetes cluster from anywhere — no VPN, no public IP required.**
