@@ -12,7 +12,7 @@ The **client** (laptop side) pairs with a code, gets a local kubeconfig, and use
  └──────────┘   (local proxy)  └──────────────┘                  └──────────────┘
 ```
 
-All traffic between client and server is **end-to-end encrypted** (X25519 + AES-256-GCM). The relay only sees opaque binary blobs.
+All traffic between client and server is **end-to-end encrypted** (X25519 + HKDF + AES-256-GCM) with **MITM protection** via pairing-code-bound key derivation. The relay only sees opaque binary blobs.
 
 ## Quick start
 
@@ -53,10 +53,11 @@ sudo mv mykube /usr/local/bin
 
 1. `mykube server` loads the kubeconfig credentials, creates a session on the relay, and displays a pairing code
 2. `mykube client` sends the pairing code to the relay to join the session
-3. Both sides perform an **X25519 ECDH key exchange** and derive an AES-256-GCM session key
-4. The server sends cluster metadata (name, CA, credentials) **encrypted** over the tunnel
-5. The client writes a temporary kubeconfig pointing to a local TCP listener and spawns a shell
-6. `kubectl` connects to `127.0.0.1` which is multiplexed through the encrypted WebSocket tunnel to the kube-apiserver
+3. Both sides perform an **X25519 ECDH key exchange** and derive an AES-256-GCM session key via HKDF, with the pairing code bound into key derivation as salt
+4. A **SAS (Short Authentication String) verification** is performed: both sides derive a tag from the shared secret + pairing code and exchange it over the encrypted channel — a mismatch aborts the connection (MITM detected)
+5. The server sends cluster metadata (name, CA, credentials) **encrypted** over the tunnel
+6. The client writes a temporary kubeconfig pointing to a local TCP listener and spawns a shell
+7. `kubectl` connects to `127.0.0.1` which is multiplexed through the encrypted WebSocket tunnel to the kube-apiserver
 
 Multiple concurrent TCP connections (e.g. `kubectl exec`, `port-forward`) are multiplexed over a single WebSocket using binary framing with connection IDs.
 
@@ -102,8 +103,9 @@ uv run pytest
 
 ## Security
 
-- **E2E encryption**: X25519 key exchange + AES-256-GCM. The relay cannot read tunnel traffic.
-- **Pairing codes**: 8-character alphanumeric codes from a cryptographic PRNG (`secrets`), with max 5 attempts per session.
+- **E2E encryption**: X25519 ECDH key exchange → HKDF-SHA256 key derivation → AES-256-GCM. The relay cannot read tunnel traffic.
+- **MITM protection**: The pairing code is bound into key derivation (HKDF salt). After key exchange, both sides derive and exchange a SAS verification tag over the encrypted channel. If a man-in-the-middle substitutes public keys, the tags won't match and the connection is aborted. This is inspired by [Magic Wormhole](https://magic-wormhole.readthedocs.io/en/latest/welcome.html)'s approach of binding a short code into the cryptographic handshake.
+- **Pairing codes**: 8-digit numeric codes from a cryptographic PRNG (`secrets`), with max 5 attempts per session.
 - **Rate limiting**: API endpoints are rate-limited per IP (20 req/min).
 - **Single connection enforcement**: Only one agent and one client can connect per session.
 - **Temp files**: Kubeconfig is written with mode 0600 to a random path and deleted on exit.
@@ -115,7 +117,7 @@ uv run pytest
 cli/                          Go CLI (Cobra)
   cmd/                        Commands (root, server, client)
   internal/
-    e2e/                      X25519 + AES-256-GCM encryption
+    e2e/                      X25519 + HKDF + AES-256-GCM + SAS verification
     handshake/                Cluster metadata exchange
     kubeconfig/               Kubeconfig loading and writing
     relay/                    Relay HTTP/WS client

@@ -7,10 +7,13 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strings"
 
+	"golang.org/x/crypto/hkdf"
 	"nhooyr.io/websocket"
 )
 
@@ -62,10 +65,19 @@ func (e *EncryptedConn) Write(ctx context.Context, typ websocket.MessageType, p 
 	return e.inner.Write(ctx, websocket.MessageBinary, frame)
 }
 
+const (
+	hkdfInfo    = "mykube-e2e-v1"
+	sasInfo     = "mykube-sas-v1"
+	sasTagLen   = 32
+	hkdfKeyLen  = 32 // AES-256
+)
+
 // KeyExchange performs X25519 ECDH key exchange over the WebSocket and returns
-// an encrypted connection. isInitiator should be true for the agent (sends pubkey
-// first) and false for the client (receives pubkey first).
-func KeyExchange(ctx context.Context, ws *websocket.Conn, isInitiator bool) (*EncryptedConn, error) {
+// an encrypted connection. The pairingCode is bound into key derivation via HKDF
+// so that a MITM who doesn't know the code produces a different SAS tag, causing
+// the verification step to fail. isInitiator should be true for the agent (sends
+// pubkey first) and false for the client (receives pubkey first).
+func KeyExchange(ctx context.Context, ws *websocket.Conn, isInitiator bool, pairingCode string) (*EncryptedConn, error) {
 	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: generate key: %w", err)
@@ -101,8 +113,22 @@ func KeyExchange(ctx context.Context, ws *websocket.Conn, isInitiator bool) (*En
 		return nil, fmt.Errorf("e2e: ECDH: %w", err)
 	}
 
-	key := sha256.Sum256(sharedSecret)
-	block, err := aes.NewCipher(key[:])
+	// Derive session key using HKDF with the pairing code as salt.
+	salt := sha256.Sum256([]byte(pairingCode))
+	sessionKey := make([]byte, hkdfKeyLen)
+	kdf := hkdf.New(sha256.New, sharedSecret, salt[:], []byte(hkdfInfo))
+	if _, err := io.ReadFull(kdf, sessionKey); err != nil {
+		return nil, fmt.Errorf("e2e: derive session key: %w", err)
+	}
+
+	// Derive SAS verification tag (separate HKDF context).
+	sasTag := make([]byte, sasTagLen)
+	sasKdf := hkdf.New(sha256.New, sharedSecret, salt[:], []byte(sasInfo))
+	if _, err := io.ReadFull(sasKdf, sasTag); err != nil {
+		return nil, fmt.Errorf("e2e: derive SAS tag: %w", err)
+	}
+
+	block, err := aes.NewCipher(sessionKey)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: create cipher: %w", err)
 	}
@@ -111,7 +137,65 @@ func KeyExchange(ctx context.Context, ws *websocket.Conn, isInitiator bool) (*En
 		return nil, fmt.Errorf("e2e: create GCM: %w", err)
 	}
 
-	return &EncryptedConn{inner: ws, aead: aead}, nil
+	enc := &EncryptedConn{inner: ws, aead: aead}
+
+	// Exchange and verify SAS tags over the encrypted channel.
+	if err := verifySAS(ctx, enc, sasTag, isInitiator); err != nil {
+		return nil, err
+	}
+
+	return enc, nil
+}
+
+// verifySAS exchanges SAS tags over the encrypted connection and verifies they
+// match. The initiator sends first, then reads; the responder reads first, then
+// sends. A mismatch means a MITM is present.
+func verifySAS(ctx context.Context, enc *EncryptedConn, localTag []byte, isInitiator bool) error {
+	sasMsg := []byte("sas:" + base64.RawURLEncoding.EncodeToString(localTag))
+
+	if isInitiator {
+		if err := enc.Write(ctx, websocket.MessageText, sasMsg); err != nil {
+			return fmt.Errorf("e2e: send SAS tag: %w", err)
+		}
+		peerTag, err := readSASTag(ctx, enc)
+		if err != nil {
+			return err
+		}
+		if subtle.ConstantTimeCompare(localTag, peerTag) != 1 {
+			return fmt.Errorf("e2e: SAS verification failed — possible MITM attack")
+		}
+	} else {
+		peerTag, err := readSASTag(ctx, enc)
+		if err != nil {
+			return err
+		}
+		if err := enc.Write(ctx, websocket.MessageText, sasMsg); err != nil {
+			return fmt.Errorf("e2e: send SAS tag: %w", err)
+		}
+		if subtle.ConstantTimeCompare(localTag, peerTag) != 1 {
+			return fmt.Errorf("e2e: SAS verification failed — possible MITM attack")
+		}
+	}
+	return nil
+}
+
+func readSASTag(ctx context.Context, enc *EncryptedConn) ([]byte, error) {
+	typ, data, err := enc.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("e2e: read SAS tag: %w", err)
+	}
+	if typ != websocket.MessageText {
+		return nil, fmt.Errorf("e2e: expected text message for SAS, got %v", typ)
+	}
+	msg := string(data)
+	if !strings.HasPrefix(msg, "sas:") {
+		return nil, fmt.Errorf("e2e: expected sas: prefix, got: %s", msg)
+	}
+	tag, err := base64.RawURLEncoding.DecodeString(msg[4:])
+	if err != nil {
+		return nil, fmt.Errorf("e2e: decode SAS tag: %w", err)
+	}
+	return tag, nil
 }
 
 func readPubKey(ctx context.Context, ws *websocket.Conn) ([]byte, error) {

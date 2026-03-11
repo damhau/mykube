@@ -65,8 +65,8 @@ func runClient(cmd *cobra.Command, args []string) error {
 	}
 	defer wsConn.Close(websocket.StatusNormalClosure, "client shutting down")
 
-	// 4. E2E key exchange (client is responder)
-	encConn, err := e2e.KeyExchange(ctx, wsConn, false)
+	// 4. E2E key exchange (client is responder, pairing code bound to key derivation)
+	encConn, err := e2e.KeyExchange(ctx, wsConn, false, code)
 	if err != nil {
 		return fmt.Errorf("e2e key exchange: %w", err)
 	}

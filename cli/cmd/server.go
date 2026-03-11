@@ -109,8 +109,8 @@ func serveOnce(ctx context.Context, rc *relay.RelayClient, hs *handshake.Handsha
 		return fmt.Errorf("waiting for client: %w", err)
 	}
 
-	// E2E key exchange
-	encConn, err := e2e.KeyExchange(ctx, wsConn, true)
+	// E2E key exchange (pairing code bound to key derivation)
+	encConn, err := e2e.KeyExchange(ctx, wsConn, true, code)
 	if err != nil {
 		return fmt.Errorf("e2e key exchange: %w", err)
 	}
