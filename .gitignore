@@ -17,4 +17,7 @@ cli/mykube
 .vscode/
 *.swp
 
+# MkDocs
+site/
+
 CLAUDE.md
