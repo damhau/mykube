@@ -79,6 +79,7 @@ func (c *RelayClient) ConnectAgent(ctx context.Context, sessionID string) (*webs
 	if err != nil {
 		return nil, fmt.Errorf("connect agent ws: %w", err)
 	}
+	conn.SetReadLimit(16 << 20) // 16 MiB — kubectl responses can be large
 	return conn, nil
 }
 
@@ -88,5 +89,6 @@ func (c *RelayClient) ConnectClient(ctx context.Context, sessionID string) (*web
 	if err != nil {
 		return nil, fmt.Errorf("connect client ws: %w", err)
 	}
+	conn.SetReadLimit(16 << 20) // 16 MiB
 	return conn, nil
 }
