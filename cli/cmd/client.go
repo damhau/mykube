@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/damien/mykube/cli/internal/e2e"
 	"github.com/damien/mykube/cli/internal/handshake"
@@ -103,14 +104,25 @@ func runClient(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Wrote temp kubeconfig: %s\n", kubeconfigPath)
 
 	// 8. Accept TCP connections and bridge through WebSocket (in background)
-	go tunnel.ServeClient(ctx, encConn, listener)
+	// Wrap ServeClient so we can detect when the WebSocket drops.
+	wsCtx, wsCancel := context.WithCancel(ctx)
+	defer wsCancel()
+	go func() {
+		tunnel.ServeClient(ctx, encConn, listener)
+		wsCancel()
+	}()
 
 	if noShell {
 		fmt.Fprintf(os.Stderr, "\n\033[32m●\033[0m Connected to cluster %s\n", hs.ClusterName)
 		fmt.Fprintf(os.Stderr, "  KUBECONFIG=%s\n", kubeconfigPath)
 		fmt.Fprintf(os.Stderr, "  Listening on %s\n", localAddr)
 		fmt.Fprintf(os.Stderr, "  Press Ctrl+C to disconnect.\n\n")
-		<-ctx.Done()
+		<-wsCtx.Done()
+		if ctx.Err() == nil {
+			// WebSocket dropped, not Ctrl+C
+			fmt.Fprintf(os.Stderr, "\nConnection lost. The remote server may have disconnected.\n")
+			return fmt.Errorf("connection lost")
+		}
 	} else {
 		// Spawn subshell with KUBECONFIG set
 		fmt.Fprintf(os.Stderr, "Spawning shell with KUBECONFIG=%s\n", kubeconfigPath)
@@ -119,6 +131,17 @@ func runClient(cmd *cobra.Command, args []string) error {
 		shell := os.Getenv("SHELL")
 		if shell == "" {
 			shell = "/bin/sh"
+		}
+
+		// Check if WS already dropped before spawning shell
+		select {
+		case <-wsCtx.Done():
+			if ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "\nConnection lost. The remote server may have disconnected.\n")
+				return fmt.Errorf("connection lost")
+			}
+			return nil
+		default:
 		}
 
 		// Create temp rcfile that sources user's bashrc then overrides PS1
@@ -140,9 +163,37 @@ func runClient(cmd *cobra.Command, args []string) error {
 		shellCmd.Stderr = os.Stderr
 		shellCmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfigPath)
 
-		if err := shellCmd.Run(); err != nil {
-			// Shell exited (possibly with non-zero), that's OK
-			fmt.Fprintf(os.Stderr, "\nShell exited.\n")
+		// Monitor for WS disconnect and kill the shell if it happens
+		shellDone := make(chan struct{})
+		go func() {
+			select {
+			case <-wsCtx.Done():
+				if shellCmd.Process != nil {
+					shellCmd.Process.Signal(syscall.SIGTERM)
+					select {
+					case <-shellDone:
+					case <-time.After(3 * time.Second):
+						shellCmd.Process.Kill()
+					}
+				}
+			case <-shellDone:
+			}
+		}()
+
+		shellErr := shellCmd.Run()
+		close(shellDone)
+
+		// Determine why the shell exited
+		select {
+		case <-wsCtx.Done():
+			if ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "\nConnection lost. The remote server may have disconnected.\n")
+				return fmt.Errorf("connection lost")
+			}
+		default:
+			if shellErr != nil {
+				fmt.Fprintf(os.Stderr, "\nShell exited.\n")
+			}
 		}
 	}
 
