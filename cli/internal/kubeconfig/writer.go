@@ -13,7 +13,6 @@ clusters:
 - cluster:
     certificate-authority-data: "{{ .CAData }}"
     server: "https://{{ .ServerAddr }}"
-    insecure-skip-tls-verify: true
   name: "{{ .ClusterName }}"
 contexts:
 - context:
