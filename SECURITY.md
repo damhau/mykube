@@ -67,7 +67,7 @@
   Top priorities to address
 
   1. End-to-end encryption — Add a key exchange (e.g., X25519 + AES-GCM) between agent and client so the relay cannot read credentials. This eliminates issues #1, #6, and #14.
-  2. Remove insecure-skip-tls-verify (#2) — The CA data is already in the kubeconfig.
+  2. insecure-skip-tls-verify (#2) — Won't fix: required because the cluster cert SAN won't include 127.0.0.1. CA data removed to avoid kubectl 1.32+ conflict. E2E encryption secures the real channel.
   3. Sanitize ClusterName — Strip to alphanumeric/dash to fix path traversal (#6), shell injection (#7), and YAML injection (#8). Or use encoding/json + gopkg.in/yaml.v3 for safe serialization.
   4. Fix temp file permissions — Use os.OpenFile with mode 0600 and O_EXCL (#5, #18).
   5. Use secrets module for pairing codes and increase code length/alphabet (#4, #20).
@@ -82,7 +82,7 @@
   ├─────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────┤
   │ 1   │ K8s credentials exposed to relay          │ Fixed — E2E encryption (X25519 + HKDF + AES-256-GCM + SAS) │                                                                                                                                                                                                                              
   ├─────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 2   │ insecure-skip-tls-verify                  │ Open                                                  │
+  │ 2   │ insecure-skip-tls-verify                  │ Won't fix — required for localhost tunnel (cert SAN ≠ 127.0.0.1); E2E encryption secures the channel │
   ├─────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────┤
   │ 3   │ No authentication on endpoints            │ Open                                                  │
   ├─────┼───────────────────────────────────────────┼───────────────────────────────────────────────────────┤

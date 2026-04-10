@@ -96,7 +96,7 @@ func runClient(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Listening on %s\n", localAddr)
 
 	// 6. Write temp kubeconfig
-	kubeconfigPath, err := kubeconfig.WriteTempKubeconfig(hs.ClusterName, localAddr, hs.CAData, hs.Token, hs.ClientCert, hs.ClientKey)
+	kubeconfigPath, err := kubeconfig.WriteTempKubeconfig(hs.ClusterName, localAddr, hs.Token, hs.ClientCert, hs.ClientKey)
 	if err != nil {
 		return fmt.Errorf("write temp kubeconfig: %w", err)
 	}

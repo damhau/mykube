@@ -11,7 +11,7 @@ const kubeconfigTemplate = `apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    certificate-authority-data: "{{ .CAData }}"
+    insecure-skip-tls-verify: true
     server: "https://{{ .ServerAddr }}"
   name: "{{ .ClusterName }}"
 contexts:
@@ -37,7 +37,6 @@ users:
 type kubeconfigData struct {
 	ClusterName string
 	ServerAddr  string
-	CAData      string
 	Token       string
 	ClientCert  string
 	ClientKey   string
@@ -77,7 +76,7 @@ func ramTempDir() string {
 
 // WriteTempKubeconfig writes a temporary kubeconfig file (mode 0600) to a
 // RAM-backed filesystem when available. Returns the file path.
-func WriteTempKubeconfig(clusterName, serverAddr, caData, token, clientCert, clientKey string) (string, error) {
+func WriteTempKubeconfig(clusterName, serverAddr, token, clientCert, clientKey string) (string, error) {
 	safeName := SanitizeClusterName(clusterName)
 
 	f, err := os.CreateTemp(ramTempDir(), fmt.Sprintf("mykube-%s-*.yaml", safeName))
@@ -94,7 +93,6 @@ func WriteTempKubeconfig(clusterName, serverAddr, caData, token, clientCert, cli
 	data := kubeconfigData{
 		ClusterName: safeName,
 		ServerAddr:  serverAddr,
-		CAData:      caData,
 		Token:       token,
 		ClientCert:  clientCert,
 		ClientKey:   clientKey,
